@@ -43,7 +43,7 @@ data class PostData(
     val cooked: String,
     val replyTo: Int,
     val postNumber: Int,
-    val myReaction: String,
+    val myReaction: String?,
 )
 
 suspend fun LoginData.getPosts(topic: Int, posts: List<Int>): List<PostData> = logger.warning("Failed to get posts $posts in topic $topic")
@@ -58,7 +58,7 @@ suspend fun LoginData.getPosts(topic: Int, posts: List<Int>): List<PostData> = l
         val cooked = json["cooked"]!!.jsonPrimitive.content
         val replyTo = json["reply_to_post_number"]?.jsonPrimitive?.intOrNull ?: 0
         val postNumber = json["post_number"]?.jsonPrimitive?.intOrNull!!
-        val myReaction = (json["current_user_reaction"] as? JsonObject)?.get("id")?.jsonPrimitive?.content ?: "null"
+        val myReaction = (json["current_user_reaction"] as? JsonObject)?.let { it["id"]?.jsonPrimitive?.content ?: "like" }
         PostData(id, topicId, username, cooked, replyTo, postNumber, myReaction)
     } ?: emptyList()
 }.getOrThrow()

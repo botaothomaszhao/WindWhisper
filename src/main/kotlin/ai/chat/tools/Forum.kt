@@ -40,7 +40,9 @@ class Forum(private val user: LoginData): AiToolSet.ToolProvider<Any?>
 
     @Serializable
     data class ToggleLikeParams(
-        @JsonSchema.Description("帖子ID")
+        @JsonSchema.Description("目标帖子所属的话题ID")
+        val topicId: Int,
+        @JsonSchema.Description("目标帖子ID")
         val postId: Int,
         @JsonSchema.Description("要进行的具体点赞操作")
         val action: String,
@@ -151,7 +153,8 @@ class Forum(private val user: LoginData): AiToolSet.ToolProvider<Any?>
         registerTool<ToggleLikeParams>(
             "toggle_like",
             null,
-            "点赞指定帖子，注意如果“我的点赞状态”不是null，说明已经点赞过了，不要重复点赞\n" +
+            "点赞指定帖子，注意如果“我的点赞状态”不是null，说明已经点赞过了，不要重复点赞！\n" +
+            "所有的action总共只能点一次，只要点了任意一个action都算点过赞了\n" +
             "以下是可用的action和说明：\n" +
             mainConfig.likes.toList().joinToString("\n") { "`${it.first}`: ${it.second   }" },
         )
@@ -166,6 +169,16 @@ class Forum(private val user: LoginData): AiToolSet.ToolProvider<Any?>
             }
             runCatching()
             {
+                user.getPosts(parm.topicId, listOf(parm.postId)).firstOrNull()?.let()
+                { post ->
+                    if (post.myReaction != null)
+                        return@registerTool AiToolInfo.ToolResult(
+                            content = Content("帖子ID ${parm.postId} 已经被你点赞过了，当前点赞状态为 `${post.myReaction}`，请不要重复点赞！"),
+                        )
+                } ?: return@registerTool AiToolInfo.ToolResult(
+                    content = Content("未能在话题ID ${parm.topicId} 中找到帖子ID ${parm.postId}，无法进行点赞操作。"),
+                )
+
                 val success = user.toggleLike(parm.postId, parm.action)
                 if (success)
                 {
