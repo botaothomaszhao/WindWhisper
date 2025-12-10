@@ -56,7 +56,7 @@ private fun parseCommandLineArgs(args: Array<String>): Pair<Array<String>, File>
         .map { (k, v) -> "$k=$v" }
         .toTypedArray()
     // 命令行中输入的自定义配置文件
-    val configFile = argsMap["-config"]?.let { File(it) } ?: File(workDir, "config.yaml")
+    val configFile = argsMap["-config"]?.let { File(it) } ?: File(workDir, "config.json")
 
     return resArgs to configFile
 }
