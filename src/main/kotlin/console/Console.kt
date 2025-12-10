@@ -117,8 +117,8 @@ object Console
 
     private var success = true
     private fun parsePrompt(prompt: String): String =
-        "${if (success) SimpleAnsiColor.Companion.CYAN.bright() else SimpleAnsiColor.Companion.RED.bright()}$prompt${RESET}"
-    private val prompt: String get() = parsePrompt("SubQuiz > ")
+        "${if (success) SimpleAnsiColor.CYAN.bright() else SimpleAnsiColor.RED.bright()}$prompt${RESET}"
+    private val prompt: String get() = parsePrompt("WindWhisper > ")
     private val rightPrompt: String get() = parsePrompt("<| POWERED BY TACHYON |>")
 
     object ConsoleCommandSender: CommandSender("Console")
