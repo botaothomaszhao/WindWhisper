@@ -7,6 +7,7 @@ import moe.tachyon.windwhisper.forum.getPosts
 import moe.tachyon.windwhisper.forum.getTopic
 import moe.tachyon.windwhisper.forum.sendPosts
 import moe.tachyon.windwhisper.forum.toggleLike
+import moe.tachyon.windwhisper.mainConfig
 import moe.tachyon.windwhisper.utils.JsonSchema
 
 class Forum(private val user: LoginData): AiToolSet.ToolProvider<Any?>
@@ -40,7 +41,9 @@ class Forum(private val user: LoginData): AiToolSet.ToolProvider<Any?>
     @Serializable
     data class ToggleLikeParams(
         @JsonSchema.Description("帖子ID")
-        val postId: Int
+        val postId: Int,
+        @JsonSchema.Description("要进行的具体点赞操作")
+        val action: String,
     )
 
     override suspend fun <S> AiToolSet<S>.registerTools()
@@ -64,7 +67,7 @@ class Forum(private val user: LoginData): AiToolSet.ToolProvider<Any?>
                     sb.append("话题标题: ${topic.title}\n")
                     sb.append("话题ID: ${topic.id}\n")
                     sb.append("话题类别: ${topic.category}\n")
-                    sb.append("该话题下的帖子的id如果你想要读取`post_number`和其他具体的信息请进一步获取。请留意某些工具需要传入`post_number`，某些则需要传入ID。\n")
+                    sb.append("该话题下的帖子的id如果你想要读取`post_number`（即楼层）和其他具体的信息请进一步获取。请留意某些工具需要传入`post_number`，某些则需要传入ID。\n")
                     sb.append("其中，第一个即为话题首帖（楼主开启话题时发的帖子）。\n")
                     topic.posts.forEach { postId -> sb.append(" ${postId}\n") }
                 }
@@ -97,7 +100,7 @@ class Forum(private val user: LoginData): AiToolSet.ToolProvider<Any?>
                 {
                     posts.forEach { post ->
                         sb.append("帖子ID: ${post.id}\n")
-                        sb.append("post_number: ${post.postNumber}\n")
+                        sb.append("楼层（post_number）: ${post.postNumber}\n")
                         sb.append("作者: ${post.username}\n")
                         sb.append("内容: ${post.cooked}\n")
                         sb.append("回复至楼层: ${post.replyTo}\n")
@@ -148,12 +151,22 @@ class Forum(private val user: LoginData): AiToolSet.ToolProvider<Any?>
         registerTool<ToggleLikeParams>(
             "toggle_like",
             null,
-            "点赞指定帖子，注意如果“我的点赞状态”不是null，说明已经点赞过了，不要重复点赞",
+            "点赞指定帖子，注意如果“我的点赞状态”不是null，说明已经点赞过了，不要重复点赞\n" +
+            "以下是可用的action和说明：\n" +
+            mainConfig.likes.toList().joinToString("\n") { "`${it.first}`: ${it.second   }" },
         )
         {
+            if (parm.action !in mainConfig.likes.keys)
+            {
+                return@registerTool AiToolInfo.ToolResult(
+                    content = Content("无效的action: ${parm.action}。可用的action有：\n" +
+                        mainConfig.likes.toList().joinToString("\n") { "`${it.first}`: ${it.second}" }
+                    ),
+                )
+            }
             runCatching()
             {
-                val success = user.toggleLike(parm.postId)
+                val success = user.toggleLike(parm.postId, parm.action)
                 if (success)
                 {
                     AiToolInfo.ToolResult(

@@ -58,7 +58,7 @@ suspend fun LoginData.getPosts(topic: Int, posts: List<Int>): List<PostData> = l
         val cooked = json["cooked"]!!.jsonPrimitive.content
         val replyTo = json["reply_to_post_number"]?.jsonPrimitive?.intOrNull ?: 0
         val postNumber = json["post_number"]?.jsonPrimitive?.intOrNull!!
-        val myReaction = (json["current_user_reaction"] as? JsonObject)?.get("reaction_value")?.jsonPrimitive?.content ?: "null"
+        val myReaction = (json["current_user_reaction"] as? JsonObject)?.get("id")?.jsonPrimitive?.content ?: "null"
         PostData(id, topicId, username, cooked, replyTo, postNumber, myReaction)
     } ?: emptyList()
 }.getOrThrow()
@@ -83,9 +83,9 @@ suspend fun LoginData.sendPosts(topic: Int, content: String, replyTo: Int): Bool
     return res.status.isSuccess()
 }.getOrThrow()
 
-suspend fun LoginData.toggleLike(post: Int): Boolean = logger.warning("Failed to toggle like for post $post")
+suspend fun LoginData.toggleLike(post: Int, action: String): Boolean = logger.warning("Failed to toggle like for post $post")
 {
-    val url = "${mainConfig.url}/discourse-reactions/posts/${post}/custom-reactions/heart/toggle.json"
+    val url = "${mainConfig.url}/discourse-reactions/posts/${post}/custom-reactions/${action}/toggle.json"
     val res = put(url)
     if (!res.status.isSuccess())
         error("Failed to toggle like for post $post: ${res.status}\n${res.bodyAsText()}")
