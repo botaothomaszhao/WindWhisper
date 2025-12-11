@@ -6,6 +6,7 @@ import moe.tachyon.windwhisper.ai.Role
 import moe.tachyon.windwhisper.ai.chat.tools.AiToolSet
 import moe.tachyon.windwhisper.ai.chat.tools.Forum
 import moe.tachyon.windwhisper.ai.chat.tools.WebSearch
+import moe.tachyon.windwhisper.ai.internal.llm.AiResult
 import moe.tachyon.windwhisper.ai.internal.llm.sendAiRequest
 import moe.tachyon.windwhisper.config.aiConfig
 import moe.tachyon.windwhisper.forum.LoginData
@@ -35,42 +36,45 @@ private suspend fun work(user: LoginData, prompt: String)
 {
     delay(1.seconds)
     val posts = user.getUnreadPosts().asReversed()
-    if (posts.isNotEmpty()) logger.info(posts.map { it.topicId }.toString())
-    val set = mutableSetOf<Int>()
-    posts.forEach()
+    val topics = posts.map { it.topicId }.distinct()
+    if (posts.isNotEmpty()) logger.info(topics.toString())
+
+    for (it in posts) logger.severe("Failed to read notification ${it.notificationId}")
     {
-        logger.severe("Failed to read notification ${it.notificationId}")
-        {
-            val success = user.markAsRead(it.notificationId)
-            if (success) logger.info("Marked notification ${it.notificationId} as read.")
-            else error("Failed to mark notification ${it.notificationId} as read.")
-        }
-
-        if (it.topicId in set) return@forEach
-        set.add(it.topicId)
-
-        val prompt = prompt
-            .replace($$"${self_name}", mainConfig.username)
-            .replace($$"${topic_id}", it.topicId.toString())
-            .replace($$"${self_memory}", memory)
-
-        val tools = AiToolSet(
-            WebSearch,
-            Forum(user),
-        )
-
-        val res = logger.warning("Failed to send AI request for notification ${it.notificationId}")
-        {
-            sendAiRequest(
-                model = aiConfig.model,
-                messages = ChatMessages(Role.USER, prompt),
-                tools = tools.getTools(null, aiConfig.model),
-                stream = true
-            )
-        }.getOrElse { return@forEach }
-        val newMemory = res.messages.filter { role -> role.role is Role.ASSISTANT }.joinToString("\n\n") { msg -> msg.content.toText() }.trim()
-        if (newMemory.isNotBlank())
-            memory = newMemory
-        logger.info("AI response for notification ${it.notificationId}:\n${newMemory}")
+        val success = user.markAsRead(it.notificationId)
+        if (success) logger.info("Marked notification ${it.notificationId} as read.")
+        else error("Failed to mark notification ${it.notificationId} as read.")
     }
+
+    val prompt = prompt
+        .replace($$"${self_name}", mainConfig.username)
+        .replace($$"${topic_id}", topics.toString())
+        .replace($$"${self_memory}", memory)
+
+    val tools = AiToolSet(
+        WebSearch,
+        Forum(user),
+    )
+
+    val res = logger.warning("Failed to send AI request for posts $topics")
+    {
+        sendAiRequest(
+            model = aiConfig.model,
+            messages = ChatMessages(Role.SYSTEM, prompt),
+            tools = tools.getTools(null, aiConfig.model),
+            stream = true
+        )
+    }.getOrElse { return }
+    if (res !is AiResult.Success)
+    {
+        if (res is AiResult.UnknownError)
+            logger.severe("AI request for posts $topics failed: $res", res.error)
+        else
+            logger.severe("AI request for posts $topics failed: $res")
+        return
+    }
+    val newMemory = res.messages.filter { role -> role.role is Role.ASSISTANT }.joinToString("\n\n") { msg -> msg.content.toText() }.trim()
+    if (newMemory.isNotBlank())
+        memory = newMemory
+    logger.info("AI response for posts ${topics}:\n${newMemory}")
 }
