@@ -741,7 +741,6 @@ private suspend fun parseToolCalls(
     }.flatMap()
     { (id, t) ->
         val (toolName, parm) = t
-        println("Calling tool: name='$toolName', args='$parm'")
         val tool = tools.firstOrNull { it.name == toolName } ?: return@flatMap run()
         {
             ChatMessages(
@@ -752,7 +751,7 @@ private suspend fun parseToolCalls(
 
         logger.warning("fail to put toolcall message")
         {
-            onReceive(StreamAiResponseSlice.ToolCall(id, tool))
+            onReceive(StreamAiResponseSlice.ToolCall(id, tool, parm))
         }
 
         val data: Any

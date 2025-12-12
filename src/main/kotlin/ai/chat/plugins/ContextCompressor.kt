@@ -68,7 +68,7 @@ fun ContextCompressor.toLlmPlugin(): BeforeLlmRequest = BeforeLlmRequest()
         }).toChatMessages()
     if (shouldCompress(uncompressed))
     {
-        onReceive(StreamAiResponseSlice.ToolCall(MARKING_TYPE + "-" + Uuid.random().toHexString(), tool))
+        onReceive(StreamAiResponseSlice.ToolCall(MARKING_TYPE + "-" + Uuid.random().toHexString(), tool, ""))
         val compressed = compress(uncompressed)
         addTokenUsage(compressed.second)
         responseMessage += ChatMessage(

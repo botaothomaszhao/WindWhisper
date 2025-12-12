@@ -436,6 +436,7 @@ sealed interface StreamAiResponseSlice
     data class ToolCall(
         val id: String,
         val tool: AiToolInfo<*>,
+        val parms: String,
     ): StreamAiResponseSlice
 
     @Serializable

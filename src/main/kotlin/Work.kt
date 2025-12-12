@@ -106,8 +106,15 @@ private suspend fun work(user: LoginData, prompt: String)
                     sb.append(after)
                 }
             }
+            else
+            {
+                putMessage(sb.toString())
+                sb.clear()
+                if (it is StreamAiResponseSlice.ToolCall)
+                    logger.info(SimpleAnsiColor.PURPLE.toString() + "<tool: ${it.tool.name}>${it.parms}</tool>" + AnsiStyle.RESET)
+            }
         }.also {
-            if (sb.isNotEmpty()) putMessage(sb.toString())
+            putMessage(sb.toString())
         }
     }.getOrElse { return }
     if (res !is AiResult.Success)
