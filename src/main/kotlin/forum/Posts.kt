@@ -17,11 +17,12 @@ data class Topic(
     val id: Int,
     val category: Category?,
     val highestPostNumber: Int,
+    val archetype: String,
 )
 
 suspend fun LoginData.getTopic(topic: Int): Topic? = logger.warning("Failed to get topic $topic")
 {
-    val url = "${mainConfig.url}/t/${topic}.json?forceLoad=true"
+    val url = "${mainConfig.url}/t/${topic}.json?track_visit=true&forceLoad=true"
     val res = get(url)
     if (!res.status.isSuccess())
     {
@@ -30,9 +31,10 @@ suspend fun LoginData.getTopic(topic: Int): Topic? = logger.warning("Failed to g
     }
     val body = res.body<JsonObject>()
     val title = body["title"]!!.jsonPrimitive.content
-    val category = getCategory(body["category_id"]!!.jsonPrimitive.int)
+    val category = runCatching { getCategory(body["category_id"]!!.jsonPrimitive.int) }.getOrNull()
     val highestPostNumber = body["highest_post_number"]!!.jsonPrimitive.int
-    return Topic(title, topic, category, highestPostNumber)
+    val archetype = body["archetype"]!!.jsonPrimitive.content
+    return Topic(title, topic, category, highestPostNumber, archetype)
 }.getOrThrow()
 
 @Serializable

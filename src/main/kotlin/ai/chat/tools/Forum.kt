@@ -68,6 +68,13 @@ class Forum(private val user: LoginData): AiToolSet.ToolProvider<Any?>
                 {
                     sb.append("话题标题: ${topic.title}\n")
                     sb.append("话题ID: ${topic.id}\n")
+                    sb.append("话题类型: ")
+                    when (topic.archetype)
+                    {
+                        "regular" -> sb.append("普通话题\n")
+                        "private_message" -> sb.append("该话题是对方与你的私信\n")
+                        else -> sb.append("未知类型(${topic.archetype})\n")
+                    }
                     sb.append("话题的类别信息:\n")
                     if (topic.category != null)
                     {
