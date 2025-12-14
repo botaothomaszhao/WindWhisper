@@ -112,6 +112,7 @@ data class PostData(
     val replyTo: Int,
     val postNumber: Int,
     val myReaction: String?,
+    val reactions: Map<String, Int>,
 )
 
 suspend fun LoginData.getPosts(topic: Int, posts: List<Int>): List<PostData> = logger.warning("Failed to get posts $posts in topic $topic")
@@ -127,7 +128,13 @@ suspend fun LoginData.getPosts(topic: Int, posts: List<Int>): List<PostData> = l
         val replyTo = json["reply_to_post_number"]?.jsonPrimitive?.intOrNull ?: 0
         val postNumber = json["post_number"]?.jsonPrimitive?.intOrNull!!
         val myReaction = (json["current_user_reaction"] as? JsonObject)?.let { it["id"]?.jsonPrimitive?.content ?: "like" }
-        PostData(id, topicId, username, cooked, replyTo, postNumber, myReaction)
+        val reactions = (json["reactions"] as? JsonArray)?.filterIsInstance<JsonObject>()?.mapNotNull()
+        {
+            val reactionId = it["id"]?.jsonPrimitive?.content ?: return@mapNotNull null
+            val count = it["count"]?.jsonPrimitive?.intOrNull ?: return@mapNotNull null
+            reactionId to count
+        }?.toMap() ?: emptyMap()
+        PostData(id, topicId, username, cooked, replyTo, postNumber, myReaction, reactions)
     } ?: emptyList()
 }.getOrThrow()
 
@@ -144,7 +151,13 @@ suspend fun LoginData.getPosts(topic: Int, postNumber: Int): List<PostData> = lo
         val replyTo = json["reply_to_post_number"]?.jsonPrimitive?.intOrNull ?: 0
         val postNumber = json["post_number"]?.jsonPrimitive?.intOrNull!!
         val myReaction = (json["current_user_reaction"] as? JsonObject)?.let { it["id"]?.jsonPrimitive?.content ?: "like" }
-        PostData(id, topicId, username, cooked, replyTo, postNumber, myReaction)
+        val reactions = (json["reactions"] as? JsonArray)?.filterIsInstance<JsonObject>()?.mapNotNull()
+        {
+            val reactionId = it["id"]?.jsonPrimitive?.content ?: return@mapNotNull null
+            val count = it["count"]?.jsonPrimitive?.intOrNull ?: return@mapNotNull null
+            reactionId to count
+        }?.toMap() ?: emptyMap()
+        PostData(id, topicId, username, cooked, replyTo, postNumber, myReaction, reactions)
     } ?: emptyList()
 }.getOrThrow()
 

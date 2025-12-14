@@ -131,6 +131,12 @@ class Forum(
                     sb.append("作者: ${post.username}\n")
                     sb.append("回复至楼层: ${post.replyTo}\n")
                     sb.append("我的点赞状态: ${post.myReaction}\n")
+                    sb.append("点赞统计:\n")
+                    if (post.reactions.isEmpty()) sb.append(" 无任何点赞\n")
+                    else post.reactions.forEach { (reaction, count) ->
+                        if (count > 0 && reaction in mainConfig.reactions.keys)
+                            sb.append("  `${reaction}`: ${count}\n")
+                    }
                     sb.append("<!--post-content-start-->\n")
                     sb.append(post.cooked)
                     sb.append("\n<!--post-content-end-->\n")
@@ -188,7 +194,7 @@ class Forum(
             "点赞指定帖子，注意如果“我的点赞状态”不是null，说明已经点赞过了，不要重复点赞！\n" +
             "所有的action总共只能点一次，只要点了任意一个action都算点过赞了\n" +
             "以下是可用的action和说明：\n" +
-            mainConfig.likes.toList().joinToString("\n") { "`${it.first}`: ${it.second   }" },
+            mainConfig.reactions.toList().joinToString("\n") { "`${it.first}`: ${it.second   }" },
         )
         {
             if (parm.topicId in blackList)
@@ -197,11 +203,11 @@ class Forum(
                     content = Content("你被禁止访问话题ID ${parm.topicId}，无法进行点赞操作。"),
                 )
             }
-            if (parm.action !in mainConfig.likes.keys)
+            if (parm.action !in mainConfig.reactions.keys)
             {
                 return@registerTool AiToolInfo.ToolResult(
                     content = Content("无效的action: ${parm.action}。可用的action有：\n" +
-                        mainConfig.likes.toList().joinToString("\n") { "`${it.first}`: ${it.second}" }
+                        mainConfig.reactions.toList().joinToString("\n") { "`${it.first}`: ${it.second}" }
                     ),
                 )
             }

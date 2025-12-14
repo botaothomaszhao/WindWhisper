@@ -110,7 +110,7 @@ suspend fun main(args: Array<String>) = withContext(Dispatchers.Default)
             password = "your_password",
             retry = 3,
             defaultHeaders = mapOf(),
-            likes = mapOf("heart" to "爱心，同时也是默认的点赞行为"),
+            reactions = mapOf("heart" to "爱心，同时也是默认的点赞行为"),
         )
         configFile.writeText(showJson.encodeToString(MainConfig.serializer(), default))
         println("配置文件不存在, 已生成默认配置文件于 ${configFile.absolutePath}, 请修改后重新运行")

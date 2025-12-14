@@ -46,8 +46,14 @@ Edit `config.json`:
   "defaultHeaders": {
     "KEY_NAME": "KEY_VALUE" // Additional headers for forum requests. Optional
   },
-  "likes": {
+  "reactions": {
     "heart": "a red heart" // All available reaction names on the forum and their corresponding descriptions.
+  },
+  "webServer": { // Optional, enables a web interface to view logs, set blacklists, etc.
+    "enabled": false, // Whether to enable the web server, default is false
+    "port": 8080, // Web server listening port, default is 8080
+    "host": "0.0.0.0", // Web server listening address, default is 0.0.0.0
+    "rootPath": "/" // Web server root path, default is /
   }
 }
 ```

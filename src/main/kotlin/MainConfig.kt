@@ -9,7 +9,7 @@ data class MainConfig(
     val password: String,
     val retry: Int,
     val defaultHeaders: Map<String, String>,
-    val likes: Map<String, String>,
+    val reactions: Map<String, String>,
     val webServer: WebServerConfig = WebServerConfig(),
 )
 

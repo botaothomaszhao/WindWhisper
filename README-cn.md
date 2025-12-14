@@ -46,8 +46,14 @@ java -jar WindWhisper.jar
   "defaultHeaders": {
     "KEY_NAME": "KEY_VALUE" // 请求论坛时额外的请求头。可选
   },
-  "likes": {
+  "reactions": {
     "heart": "一个红色爱心" // 论坛上所有可用的reaction名称及其对应的描述。
+  },
+  "webServer": { // 可选，启用后可通过web界面查看日志、设置黑名单等
+    "enabled": false, // 是否启用web服务器，默认false
+    "port": 8080, // web服务器监听端口，默认8080
+    "host": "0.0.0.0", // web服务器监听地址，默认0.0.0.0
+    "rootPath": "/" // web服务器根路径，默认/
   }
 }
 ```
