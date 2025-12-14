@@ -1,14 +1,37 @@
 package moe.tachyon.windwhisper
 
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import com.charleskorn.kaml.Yaml
+import com.charleskorn.kaml.YamlMap
+import com.charleskorn.kaml.YamlScalar
+import io.ktor.http.*
+import io.ktor.serialization.kotlinx.json.*
+import io.ktor.server.application.*
+import io.ktor.server.engine.*
+import io.ktor.server.http.content.*
+import io.ktor.server.netty.*
+import io.ktor.server.plugins.autohead.*
+import io.ktor.server.plugins.contentnegotiation.*
+import io.ktor.server.request.*
+import io.ktor.server.response.*
+import io.ktor.server.routing.*
+import io.ktor.server.sse.*
+import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.serialization.Serializable
 import moe.tachyon.windwhisper.config.ConfigLoader
+import moe.tachyon.windwhisper.config.loggerConfig
 import moe.tachyon.windwhisper.console.Console
-import moe.tachyon.windwhisper.console.command.CommandSet
+import moe.tachyon.windwhisper.forum.LoginData
+import moe.tachyon.windwhisper.forum.getTopicTitle
 import moe.tachyon.windwhisper.forum.login
+import moe.tachyon.windwhisper.logger.ToConsoleHandler
+import moe.tachyon.windwhisper.logger.WindWhisperLogger
 import moe.tachyon.windwhisper.utils.Power
 import java.io.File
+import java.util.logging.Handler
+import java.util.logging.LogRecord
 import kotlin.properties.Delegates
 
 lateinit var version: String
@@ -20,6 +43,17 @@ lateinit var dataDir: File
 lateinit var mainConfig: MainConfig
 var debug by Delegates.notNull<Boolean>()
     private set
+var server: Application? = null
+    private set
+var mainJob: Job? = null
+    private set
+val loginUser: LoginData by lazy()
+{
+    runBlocking { login() }
+}
+
+@Serializable
+data class BlacklistItem(val id: Int, val title: String)
 
 /**
  * 解析命令行, 返回的是处理后的命令行, 和从命令行中读取的配置文件(默认是config.yaml, 可通过-config=xxxx.yaml更改)
@@ -30,7 +64,7 @@ private fun parseCommandLineArgs(args: Array<String>): Pair<Array<String>, File>
     {
         when (val idx = it.indexOf("="))
         {
-            -1 -> null
+            -1   -> null
             else -> Pair(it.take(idx), it.drop(idx + 1))
         }
     }.toMap()
@@ -61,14 +95,13 @@ private fun parseCommandLineArgs(args: Array<String>): Pair<Array<String>, File>
     return resArgs to configFile
 }
 
+@OptIn(DelicateCoroutinesApi::class)
 suspend fun main(args: Array<String>) = withContext(Dispatchers.Default)
 {
-    println("starting WindWhisper...")
     val (_, configFile) = runCatching { parseCommandLineArgs(args) }.getOrElse { return@withContext }
     ConfigLoader.init()
     Power.init()
     Console.startConsoleCommandHandler()
-    println("initialized Power system.")
     if (!configFile.exists())
     {
         val default = MainConfig(
@@ -86,14 +119,155 @@ suspend fun main(args: Array<String>) = withContext(Dispatchers.Default)
     val promptFile = File(workDir, "prompt.txt")
     if (!promptFile.exists())
     {
-        Loader.getResource("/prompt.default.md")?.use { input ->
-            promptFile.outputStream().use { output ->
+        Loader.getResource("/prompt.default.md")?.use()
+        { input ->
+            promptFile.outputStream().use()
+            { output ->
                 input.copyTo(output)
             }
         }
     }
-    val prompt = promptFile.readText()
+    version = Yaml.default.parseToYamlNode(Loader.getResource("application.yaml")!!.readBytes().decodeToString())
+        .let { it as YamlMap }
+        .get<YamlScalar>("version")!!
+        .content
     mainConfig = dataJson.decodeFromString(configFile.readText())
-    println("Config loaded from ${configFile.absolutePath}")
-    workMain(login(), prompt)
+    WindWhisperLogger.getLogger().info("Config loaded from ${configFile.absolutePath}")
+    mainJob = launch()
+    {
+        workMain(loginUser, promptFile.readText())
+    }
+    var server: EmbeddedServer<*, *>? = null
+    if (mainConfig.webServer.enabled)
+    {
+        server = EngineMain.createServer(
+            arrayOf(
+                "-port=${mainConfig.webServer.port}",
+                "-host=${mainConfig.webServer.host}",
+                "-P:ktor.deployment.rootPath=${mainConfig.webServer.rootPath}",
+            )
+        )
+    }
+    server?.start(wait = false)
+    mainJob!!.join()
+}
+
+@Suppress("unused")
+fun Application.init()
+{
+    server = this
+    WindWhisperLogger.getLogger().info("Starting web server...")
+    install(AutoHeadResponse)
+    install(ContentNegotiation)
+    {
+        json(contentNegotiationJson)
+    }
+    install(SSE)
+
+    val loggerFlow = MutableSharedFlow<String>(
+        replay = 1024,
+        extraBufferCapacity = 1024,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val sharedFlow = loggerFlow.asSharedFlow()
+
+    WindWhisperLogger.globalLogger.logger.addHandler(object: Handler()
+    {
+        init
+        {
+            this.formatter = ToConsoleHandler.formatter
+        }
+
+        override fun publish(record: LogRecord)
+        {
+            if (!loggerConfig.check(record)) return
+            if (record.loggerName.startsWith("io.ktor.websocket")) return
+            loggerFlow.tryEmit(formatter.format(record))
+        }
+
+        override fun flush() = Unit
+        override fun close() = Unit
+    })
+
+    routing()
+    {
+        get("/")
+        {
+            val fileContent = Loader.getResource("index.html")?.readBytes() ?: return@get call.respond(HttpStatusCode.NotFound)
+            call.respondBytes(
+                fileContent.decodeToString().replace($$"$rootPath", mainConfig.webServer.rootPath.removeSuffix("/")).encodeToByteArray(),
+                ContentType.Text.Html
+            )
+        }
+
+        staticResources("/js", "js")
+
+        route("/logs/sse", HttpMethod.Get)
+        {
+            plugin(SSE)
+            handle()
+            {
+                call.response.header(HttpHeaders.ContentType, ContentType.Text.EventStream.toString())
+                call.response.header(HttpHeaders.CacheControl, "no-store")
+                call.response.header(HttpHeaders.Connection, "keep-alive")
+                call.response.header("X-Accel-Buffering", "no")
+                val sse = SSEServerContent(call)
+                {
+                    heartbeat()
+                    sharedFlow.collect()
+                    {
+                        send(
+                            data = it,
+                            event = "log_message",
+                            id = System.currentTimeMillis().toString(),
+                        )
+                    }
+                }
+                return@handle call.respond(HttpStatusCode.OK, sse)
+            }
+        }
+
+        get("/memory")
+        {
+            return@get call.respond(HttpStatusCode.OK,  memory)
+        }
+
+        route("/blacklist")
+        {
+            get()
+            {
+                val items = blackList.map()
+                { id ->
+                    val topic = runCatching { loginUser.getTopicTitle(id) }.getOrNull()
+                    BlacklistItem(id, topic ?: "未知标题")
+                }
+                call.respond(items)
+            }
+
+            post()
+            {
+                val params = call.receiveParameters()
+                val id = params["id"]?.toIntOrNull()
+                if (id == null)
+                {
+                    call.respond(HttpStatusCode.BadRequest, "Missing or invalid id")
+                    return@post
+                }
+                blackList = blackList + id
+                call.respond(HttpStatusCode.OK)
+            }
+
+            delete("/{id}")
+            {
+                val id = call.parameters["id"]?.toIntOrNull()
+                if (id == null)
+                {
+                    call.respond(HttpStatusCode.BadRequest, "Missing or invalid id")
+                    return@delete
+                }
+                blackList = blackList - id
+                call.respond(HttpStatusCode.OK)
+            }
+        }
+    }
 }

@@ -1,9 +1,15 @@
 package moe.tachyon.windwhisper.utils
 
+import io.ktor.server.application.ApplicationStopPreparing
+import io.ktor.utils.io.InternalAPI
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.runBlocking
 import moe.tachyon.windwhisper.console.AnsiStyle.Companion.RESET
 import moe.tachyon.windwhisper.console.SimpleAnsiColor.Companion.CYAN
 import moe.tachyon.windwhisper.console.SimpleAnsiColor.Companion.PURPLE
 import moe.tachyon.windwhisper.logger.WindWhisperLogger
+import moe.tachyon.windwhisper.mainJob
+import moe.tachyon.windwhisper.server
 import java.io.File
 import kotlin.system.exitProcess
 
@@ -23,6 +29,27 @@ object Power
             isShutdown = code
         }
         logger.warning("${PURPLE}Server is shutting down: ${CYAN}$cause${RESET}")
+        val server = server
+        if (server != null) logger.warning("Failed to stop Ktor: ")
+        {
+            server.monitor.raise(ApplicationStopPreparing, server.environment)
+            server.engine.stop()
+            @OptIn(InternalAPI::class)
+            runBlocking { server.disposeAndJoin() }
+            logger.info("Ktor is stopped.")
+        }
+        val mainJob = mainJob
+        if (mainJob != null)
+        {
+            logger.info("Waiting for MainJob to complete...")
+            logger.warning("Failed to stop MainJob")
+            {
+                runBlocking { mainJob.cancelAndJoin() }
+            }.onSuccess()
+            {
+                logger.info("MainJob is stopped.")
+            }
+        }
         startShutdownHook(code)
         exitProcess(code)
     }

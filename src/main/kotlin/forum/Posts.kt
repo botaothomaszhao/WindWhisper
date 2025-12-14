@@ -4,10 +4,15 @@ import io.ktor.client.call.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 import moe.tachyon.windwhisper.logger.WindWhisperLogger
 import moe.tachyon.windwhisper.mainConfig
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Instant
 
 val logger = WindWhisperLogger.getLogger()
 
@@ -20,13 +25,44 @@ data class Topic(
     val archetype: String,
 )
 
+private val bufferMutex = Mutex()
+private val topicBuffer = LinkedHashMap<Int, Pair<String?, Instant>>()
+private const val BUFFER_TIME_MINUTES = 10L
+
+suspend fun LoginData.getTopicTitle(topic: Int): String?
+{
+    val now = Clock.System.now()
+    bufferMutex.withLock()
+    {
+        val it = topicBuffer.iterator()
+        while (it.hasNext())
+        {
+            val entry = it.next()
+            if (now - entry.value.second > BUFFER_TIME_MINUTES.minutes)
+                it.remove()
+            else
+                break
+        }
+        val cached = topicBuffer[topic]
+        if (cached != null)
+            return cached.first
+    }
+    return getTopic(topic)?.title
+}
 suspend fun LoginData.getTopic(topic: Int): Topic? = logger.warning("Failed to get topic $topic")
 {
     val url = "${mainConfig.url}/t/${topic}.json?track_visit=true&forceLoad=true"
     val res = get(url)
     if (!res.status.isSuccess())
     {
-        if (res.status.value == 404) return null
+        if (res.status.value == 404)
+        {
+            bufferMutex.withLock()
+            {
+                topicBuffer[topic] = Pair(null, Clock.System.now())
+            }
+            return null
+        }
         error("Failed to get topic $topic: ${res.status}\n${res.bodyAsText()}")
     }
     val body = res.body<JsonObject>()
@@ -34,7 +70,12 @@ suspend fun LoginData.getTopic(topic: Int): Topic? = logger.warning("Failed to g
     val category = runCatching { getCategory(body["category_id"]!!.jsonPrimitive.int) }.getOrNull()
     val highestPostNumber = body["highest_post_number"]!!.jsonPrimitive.int
     val archetype = body["archetype"]!!.jsonPrimitive.content
-    return Topic(title, topic, category, highestPostNumber, archetype)
+    val result = Topic(title, topic, category, highestPostNumber, archetype)
+    bufferMutex.withLock()
+    {
+        topicBuffer[topic] = Pair(result.title, Clock.System.now())
+    }
+    return result
 }.getOrThrow()
 
 @Serializable

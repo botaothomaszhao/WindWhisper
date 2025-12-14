@@ -9,5 +9,14 @@ data class MainConfig(
     val password: String,
     val retry: Int,
     val defaultHeaders: Map<String, String>,
-    val likes: Map<String, String>
+    val likes: Map<String, String>,
+    val webServer: WebServerConfig = WebServerConfig(),
+)
+
+@Serializable
+data class WebServerConfig(
+    val enabled: Boolean = false,
+    val port: Int = 8080,
+    val host: String = "0.0.0.0",
+    val rootPath: String = "/"
 )

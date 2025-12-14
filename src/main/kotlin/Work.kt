@@ -1,6 +1,8 @@
 package moe.tachyon.windwhisper
 
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import moe.tachyon.windwhisper.ai.ChatMessages
 import moe.tachyon.windwhisper.ai.Role
 import moe.tachyon.windwhisper.ai.StreamAiResponseSlice
@@ -22,24 +24,39 @@ import kotlin.time.Duration.Companion.seconds
 suspend fun workMain(user: LoginData, prompt: String)
 {
     logger.info("Starting work loop...")
-    while (true) work(user, prompt)
+    while (true)
+    {
+        delay(5.seconds)
+        withContext(NonCancellable) { work(user, prompt) }
+    }
 }
 
 private val memoryFile by lazy()
 {
     File(dataDir, "memory.md")
 }
-private var memory: String
+var memory: String
     get() = memoryFile.takeIf { it.exists() }?.readText() ?: ""
-    set(value) = memoryFile.writeText(value)
+    private set(value) = memoryFile.writeText(value)
+var blackList: Set<Int>
+    get()
+    {
+        val file = File(dataDir, "blacklist.txt")
+        if (!file.exists()) return emptySet()
+        return file.readLines().mapNotNull { it.toIntOrNull() }.toSet()
+    }
+    set(value)
+    {
+        val file = File(dataDir, "blacklist.txt")
+        file.writeText(value.joinToString("\n"))
+    }
 
 private val logger = WindWhisperLogger.getLogger()
 private suspend fun work(user: LoginData, prompt: String)
 {
-    delay(1.seconds)
     val posts = user.getUnreadPosts().asReversed()
-    val topics = posts.map { it.topicId }.distinct()
-    if (posts.isNotEmpty()) logger.info(topics.toString())
+    val topics = posts.map { it.topicId }.distinct().filter { it !in blackList }
+    if (posts.isNotEmpty()) logger.info("Starting to process ${posts.size} unread notifications for topics $topics")
 
     for (it in posts) logger.severe("Failed to read notification ${it.notificationId}")
     {
@@ -55,19 +72,33 @@ private suspend fun work(user: LoginData, prompt: String)
         .replace($$"${topic_id}", topics.toString())
         .replace($$"${self_memory}", memory)
 
-    val tools = AiToolSet(Forum(user))
+    val tools = AiToolSet(Forum(user, blackList))
     if (aiConfig.webSearchKey.isNotEmpty()) tools.addProvider(WebSearch)
 
     val res = logger.warning("Failed to send AI request for posts $topics")
     {
-        val putMessage: (String) -> Unit = { content ->
-            content.split("\n").filter { it.isNotBlank() }.forEach { line -> logger.info(SimpleAnsiColor.CYAN.toString() + line + AnsiStyle.RESET) }
+        var lastLineIsReasoning = false
+        val putMessage: (String, Boolean) -> Unit = putMessage@{ content, isReasoning ->
+            val lines = content.split("\n").filter { it.isNotBlank() }
+            if (lines.isEmpty()) return@putMessage
+            if (isReasoning && !lastLineIsReasoning)
+            {
+                logger.info(SimpleAnsiColor.GREEN.toString() + "<thinking>" + AnsiStyle.RESET)
+                lastLineIsReasoning = true
+            }
+            else if (!isReasoning && lastLineIsReasoning)
+            {
+                logger.info(SimpleAnsiColor.GREEN.toString() + "</thinking>" + AnsiStyle.RESET)
+                lastLineIsReasoning = false
+            }
+            lines.forEach { line -> logger.info(SimpleAnsiColor.CYAN.toString() + line + AnsiStyle.RESET) }
         }
+
         val sb = StringBuilder()
         var reasoning = false
         sendAiRequest(
             model = aiConfig.model,
-            messages = ChatMessages(Role.SYSTEM, prompt),
+            messages = ChatMessages(Role.USER, prompt),
             tools = tools.getTools(null, aiConfig.model),
             stream = true
         )
@@ -78,9 +109,8 @@ private suspend fun work(user: LoginData, prompt: String)
                 {
                     if (!reasoning)
                     {
-                        putMessage(sb.toString())
+                        putMessage(sb.toString(), false)
                         sb.clear()
-                        logger.info(SimpleAnsiColor.GREEN.toString() + "<thinking>" + AnsiStyle.RESET)
                         reasoning = true
                     }
                     sb.append(it.reasoningContent)
@@ -89,16 +119,15 @@ private suspend fun work(user: LoginData, prompt: String)
                 {
                     if (reasoning)
                     {
-                        putMessage(sb.toString())
+                        putMessage(sb.toString(), true)
                         sb.clear()
-                        logger.info(SimpleAnsiColor.GREEN.toString() + "</thinking>" + AnsiStyle.RESET)
                         reasoning = false
                     }
                     sb.append(it.content)
                 }
                 if (sb.contains("\n"))
                 {
-                    putMessage(sb.toString().substringBeforeLast("\n"))
+                    putMessage(sb.toString().substringBeforeLast("\n"), reasoning)
                     val after = sb.toString().substringAfterLast("\n")
                     sb.clear()
                     sb.append(after)
@@ -106,13 +135,14 @@ private suspend fun work(user: LoginData, prompt: String)
             }
             else
             {
-                putMessage(sb.toString())
+                putMessage(sb.toString(), reasoning)
                 sb.clear()
                 if (it is StreamAiResponseSlice.ToolCall)
                     logger.info(SimpleAnsiColor.PURPLE.toString() + "<tool: ${it.tool.name}>${it.parms}</tool>" + AnsiStyle.RESET)
             }
         }.also {
-            putMessage(sb.toString())
+            putMessage(sb.toString(), reasoning)
+            sb.clear()
         }
     }.getOrElse { return }
     if (res !is AiResult.Success)

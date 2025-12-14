@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WindWhisper 控制台</title>
+    <!-- 引入 AnsiUp 用于渲染 ANSI 颜色 -->
+    <script src="$rootPath/js/ansi_up.min.js"></script>
+    <!-- 引入 Marked 用于渲染 Markdown 记忆 -->
+    <script src="$rootPath/js/marked.min.js"></script>
+    <style>
+        /* maple mono cdn */
+        @import url("https://fontsapi.zeoseven.com/442/main/result.css");
+
+        :root {
+            --bg-color: #0d1117;
+            --term-bg: #161b22;
+            --text-color: #c9d1d9;
+            --accent-color: #58a6ff;
+            --border-color: #30363d;
+            --glass-bg: rgba(22, 27, 34, 0.85);
+            --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, 'Courier New', monospace;
+            --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: var(--font-sans);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        header {
+            padding: 1rem 2rem;
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 10;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--accent-color);
+        }
+
+        #term-container {
+            flex: 1;
+            padding: 1rem;
+            overflow-y: auto;
+            font-family: var(--font-mono);
+            background-color: var(--bg-color);
+            scroll-behavior: smooth;
+        }
+
+        #terminal {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            line-height: 1.5;
+            font-size: 14px;
+        }
+
+        .btn {
+            background-color: var(--border-color);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 0.9rem;
+        }
+
+        .btn:hover {
+            background-color: var(--accent-color);
+            color: #fff;
+            border-color: var(--accent-color);
+        }
+
+        #memory-overlay, .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+
+        #memory-overlay.active, .modal-overlay.active {
+            display: flex;
+        }
+
+        #memory-modal, .modal-window {
+            background: var(--term-bg);
+            width: 80%;
+            max-width: 800px;
+            height: 80%;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+        }
+
+        .modal-content {
+             flex: 1;
+             padding: 1.5rem;
+             overflow-y: auto;
+             font-family: var(--font-sans);
+             line-height: 1.6;
+        }
+
+        .blacklist-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.8rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .blacklist-item:last-child { border-bottom: none; }
+        .blacklist-info { display: flex; flex-direction: column; }
+        .blacklist-id { font-size: 0.8em; color: #8b949e; }
+        .delete-btn {
+            background: #da3633;
+            border: none;
+            color: #fff;
+            padding: 0.3rem 0.8rem;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .delete-btn:hover { background: #f85149; }
+
+        .modal-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-title {
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .close-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-color);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+        }
+
+        .close-btn:hover {
+            color: #fff;
+        }
+
+        #memory-content {
+            flex: 1;
+            padding: 1.5rem;
+            overflow-y: auto;
+            font-family: var(--font-sans);
+            line-height: 1.6;
+        }
+
+        /* Markdown Styles */
+        #memory-content h1, #memory-content h2, #memory-content h3 {
+            color: var(--accent-color);
+            margin-top: 1.5em;
+        }
+        #memory-content pre {
+            background: #21262d;
+            padding: 1rem;
+            border-radius: 6px;
+            overflow-x: auto;
+        }
+        #memory-content code {
+            font-family: var(--font-mono);
+            background: rgba(110, 118, 129, 0.4);
+            padding: 0.2em 0.4em;
+            border-radius: 4px;
+        }
+        #memory-content pre code {
+            background: transparent;
+            padding: 0;
+        }
+        #memory-content blockquote {
+            border-left: 4px solid var(--border-color);
+            margin: 0;
+            padding-left: 1rem;
+            color: #8b949e;
+        }
+
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+        ::-webkit-scrollbar-track {
+            background: var(--bg-color);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 5px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #58a6ff66;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>WindWhisper 终端</h1>
+    <div style="display: flex; gap: 10px;">
+        <button class="btn" id="view-memory-btn">查看记忆</button>
+        <button class="btn" id="view-blacklist-btn">黑名单管理</button>
+    </div>
+</header>
+
+<div id="term-container">
+    <div id="terminal"></div>
+</div>
+
+<!-- Only visible when toggled -->
+<div id="memory-overlay">
+    <div id="memory-modal">
+        <div class="modal-header">
+            <span class="modal-title">记忆预览</span>
+            <button class="close-btn" id="close-memory-btn">&times;</button>
+        </div>
+        <div id="memory-content">
+            <!-- Content will be injected here -->
+            <div style="text-align: center; color: #8b949e;">正在加载记忆...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Blacklist Modal -->
+<div id="blacklist-overlay" class="modal-overlay">
+    <div id="blacklist-modal" class="modal-window">
+        <div class="modal-header">
+            <span class="modal-title">黑名单管理</span>
+            <button class="close-btn" id="close-blacklist-btn">&times;</button>
+        </div>
+        <div class="modal-content">
+            <div style="margin-bottom: 1rem; display: flex; gap: 10px;">
+                <input type="number" id="blacklist-input" placeholder="输入 Topic ID" style="flex: 1; padding: 0.5rem; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-color);">
+                <button class="btn" id="add-blacklist-btn">添加</button>
+            </div>
+            <div id="blacklist-list" style="max-height: 400px; overflow-y: auto;">
+                <!-- List items here -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const termContainer = document.getElementById('term-container');
+    const terminal = document.getElementById('terminal');
+    const ansi_up = new AnsiUp();
+    
+    // Auto-scroll logic
+    let shouldAutoScroll = true;
+    const scrollThreshold = 50; // pixels
+
+    termContainer.addEventListener('scroll', () => {
+        const { scrollTop, scrollHeight, clientHeight } = termContainer;
+        // If user is near bottom, enable auto-scroll. Otherwise disable.
+        // We add a small buffer (threshold) to account for minor calculation differences
+        if (scrollHeight - scrollTop - clientHeight <= scrollThreshold) {
+            shouldAutoScroll = true;
+        } else {
+            shouldAutoScroll = false;
+        }
+    });
+
+    function appendLog(text) {
+        const html = ansi_up.ansi_to_html(text);
+        const span = document.createElement('span');
+        span.innerHTML = html + '\n'; // Add newline as SSE often sends per line or chunks
+        terminal.appendChild(span);
+
+        if (shouldAutoScroll) {
+            termContainer.scrollTop = termContainer.scrollHeight;
+        }
+    }
+
+    // Connect to SSE
+    const evtSource = new EventSource("$rootPath/logs/sse");
+    
+    evtSource.addEventListener("log_message", (event) => {
+        appendLog(event.data);
+    });
+
+    evtSource.onerror = (err) => {
+        console.error("EventSource failed:", err);
+        // Optional: show error in terminal
+        // appendLog("\u001b[31m[System] Connection lost. Reconnecting...\u001b[0m");
+    };
+
+    // Memory Viewer Logic
+    const viewMemoryBtn = document.getElementById('view-memory-btn');
+    const closeMemoryBtn = document.getElementById('close-memory-btn');
+    const memoryOverlay = document.getElementById('memory-overlay');
+    const memoryContent = document.getElementById('memory-content');
+
+    function toggleMemory(show) {
+        if (show) {
+            memoryOverlay.classList.add('active');
+            fetchMemory();
+        } else {
+            memoryOverlay.classList.remove('active');
+        }
+    }
+
+    viewMemoryBtn.addEventListener('click', () => toggleMemory(true));
+    closeMemoryBtn.addEventListener('click', () => toggleMemory(false));
+    memoryOverlay.addEventListener('click', (e) => {
+        if (e.target === memoryOverlay) toggleMemory(false);
+    });
+
+    async function fetchMemory() {
+        memoryContent.innerHTML = '<div style="text-align: center; color: #8b949e;">正在加载记忆...</div>';
+        try {
+            const response = await fetch('$rootPath/memory');
+            if (!response.ok) throw new Error('Network response was not ok');
+            const markdown = await response.text();
+            
+            if (!markdown.trim()) {
+                memoryContent.innerHTML = '<div style="text-align: center; color: #8b949e;">暂无记忆内容</div>';
+                return;
+            }
+
+            memoryContent.innerHTML = marked.parse(markdown);
+        } catch (error) {
+            console.error('Error fetching memory:', error);
+            memoryContent.innerHTML = `<div style="text-align: center; color: #ff7b72;">加载失败: ${error.message}</div>`;
+        }
+    }
+
+    // Blacklist Logic
+    const viewBlacklistBtn = document.getElementById('view-blacklist-btn');
+    const closeBlacklistBtn = document.getElementById('close-blacklist-btn');
+    const blacklistOverlay = document.getElementById('blacklist-overlay');
+    const blacklistList = document.getElementById('blacklist-list');
+    const addBlacklistBtn = document.getElementById('add-blacklist-btn');
+    const blacklistInput = document.getElementById('blacklist-input');
+
+    function toggleBlacklist(show) {
+        if (show) {
+            blacklistOverlay.classList.add('active');
+            fetchBlacklist();
+        } else {
+            blacklistOverlay.classList.remove('active');
+        }
+    }
+
+    viewBlacklistBtn.addEventListener('click', () => toggleBlacklist(true));
+    closeBlacklistBtn.addEventListener('click', () => toggleBlacklist(false));
+    blacklistOverlay.addEventListener('click', (e) => {
+        if (e.target === blacklistOverlay) toggleBlacklist(false);
+    });
+
+    async function fetchBlacklist() {
+        blacklistList.innerHTML = '<div style="text-align: center; color: #8b949e;">正在加载黑名单...</div>';
+        try {
+            const response = await fetch('$rootPath/blacklist');
+            if (!response.ok) throw new Error('Failed to fetch blacklist');
+            const items = await response.json();
+            renderBlacklist(items);
+        } catch (error) {
+            console.error('Error fetching blacklist:', error);
+            blacklistList.innerHTML = `<div style="text-align: center; color: #ff7b72;">加载失败: ${error.message}</div>`;
+        }
+    }
+
+    function renderBlacklist(items) {
+        if (items.length === 0) {
+            blacklistList.innerHTML = '<div style="text-align: center; color: #8b949e;">暂无黑名单数据</div>';
+            return;
+        }
+        blacklistList.innerHTML = items.map(item => `
+            <div class="blacklist-item">
+                <div class="blacklist-info">
+                    <span style="font-weight: 500;">${item.title}</span>
+                    <span class="blacklist-id">ID: ${item.id}</span>
+                </div>
+                <button class="delete-btn" onclick="deleteBlacklist(${item.id})">删除</button>
+            </div>
+        `).join('');
+    }
+
+    addBlacklistBtn.addEventListener('click', async () => {
+        const id = blacklistInput.value.trim();
+        if (!id) return;
+        
+        try {
+            const body = new URLSearchParams();
+            body.append('id', id);
+
+            const response = await fetch('$rootPath/blacklist', {
+                method: 'POST',
+                body: body
+            });
+            
+            if (response.ok) {
+                blacklistInput.value = '';
+                fetchBlacklist();
+            } else {
+                alert('添加失败');
+            }
+        } catch (e) {
+            console.error(e);
+            alert('添加出错');
+        }
+    });
+
+    window.deleteBlacklist = async (id) => {
+        if (!confirm('确定要删除吗？')) return;
+        try {
+            const response = await fetch('$rootPath/blacklist/' + id, {
+                method: 'DELETE'
+            });
+            if (response.ok) {
+                fetchBlacklist();
+            } else {
+                alert('删除失败');
+            }
+        } catch (e) {
+            console.error(e);
+            alert('删除出错');
+        }
+    };
+</script>
+
+</body>
+</html>

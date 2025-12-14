@@ -3,8 +3,10 @@
 package moe.tachyon.windwhisper.utils
 
 import com.charleskorn.kaml.*
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.*
 import java.awt.Color
 import java.awt.image.BufferedImage
@@ -13,6 +15,7 @@ import java.io.OutputStream
 import java.io.PrintStream
 import javax.imageio.ImageIO
 import kotlin.collections.iterator
+import kotlin.coroutines.CoroutineContext
 import kotlin.text.iterator
 
 open class LineOutputStream(private val line: (String) -> Unit): OutputStream()
@@ -66,7 +69,7 @@ fun richTextToString(richText: JsonElement): String
             if (content != null) return richTextToString(content)
             val children = richText["children"]
             if (children != null) return richTextToString(children)
-            return ""
+            ""
         }
     }
 }
@@ -106,7 +109,7 @@ fun YamlNode.toJsonElement(): JsonElement
             runCatching { return JsonPrimitive(this.toBoolean()) }
             runCatching { return JsonPrimitive(this.toLong()) }
             runCatching { return JsonPrimitive(this.toDouble()) }
-            return JsonPrimitive(this.content)
+            JsonPrimitive(this.content)
         }
         is YamlTaggedNode -> this.innerNode.toJsonElement()
     }
@@ -187,4 +190,26 @@ fun <T> suspendLazy(initializer: suspend () -> T): suspend () -> T
             }
         }
     }
+}
+
+/**
+ * 当context被取消，即使内部的程序捕捉取消事件并继续执行，withContext也会抛出CancellationException，
+ * 该函数在这种情况下不会抛出异常，而是返回内部的结果。
+ */
+suspend fun <T> safeWithContext(
+    context: CoroutineContext,
+    block: suspend CoroutineScope.() -> T
+): T
+{
+    var res: Result<T>? = null
+    val res1 = runCatching()
+    {
+        withContext(context)
+        {
+            res = runCatching { block() }
+            return@withContext res
+        }
+    }
+    if (res != null) return res.getOrThrow()
+    return res1.getOrThrow().getOrThrow()
 }

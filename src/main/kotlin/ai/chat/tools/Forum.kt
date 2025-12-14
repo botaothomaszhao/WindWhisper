@@ -10,7 +10,10 @@ import moe.tachyon.windwhisper.forum.toggleLike
 import moe.tachyon.windwhisper.mainConfig
 import moe.tachyon.windwhisper.utils.JsonSchema
 
-class Forum(private val user: LoginData): AiToolSet.ToolProvider<Any?>
+class Forum(
+    private val user: LoginData,
+    private val blackList: Set<Int>,
+): AiToolSet.ToolProvider<Any?>
 {
     override val name: String = "Forum"
 
@@ -56,6 +59,12 @@ class Forum(private val user: LoginData): AiToolSet.ToolProvider<Any?>
             "获得一个话题的相关信息",
         )
         {
+            if (parm.topicId in blackList)
+            {
+                return@registerTool AiToolInfo.ToolResult(
+                    content = Content("你被禁止访问话题ID ${parm.topicId}。"),
+                )
+            }
             runCatching()
             {
                 val topic = user.getTopic(parm.topicId)
@@ -106,6 +115,12 @@ class Forum(private val user: LoginData): AiToolSet.ToolProvider<Any?>
             "指定楼层（post_number）获得其前、后各10楼的帖子信息，这个工具非常适合当你需要通过楼层翻阅帖子内容时使用",
         )
         {
+            if (parm.topicId in blackList)
+            {
+                return@registerTool AiToolInfo.ToolResult(
+                    content = Content("你被禁止访问话题ID ${parm.topicId}。"),
+                )
+            }
             runCatching()
             {
                 val posts = user.getPosts(parm.topicId, parm.postNumber)
@@ -138,6 +153,12 @@ class Forum(private val user: LoginData): AiToolSet.ToolProvider<Any?>
             "发送一个帖子到指定话题",
         )
         {
+            if (parm.topicId in blackList)
+            {
+                return@registerTool AiToolInfo.ToolResult(
+                    content = Content("你被禁止访问话题ID ${parm.topicId}，无法发送帖子。"),
+                )
+            }
             runCatching()
             {
                 val success = user.sendPosts(parm.topicId, parm.content, parm.replyTo)
@@ -170,6 +191,12 @@ class Forum(private val user: LoginData): AiToolSet.ToolProvider<Any?>
             mainConfig.likes.toList().joinToString("\n") { "`${it.first}`: ${it.second   }" },
         )
         {
+            if (parm.topicId in blackList)
+            {
+                return@registerTool AiToolInfo.ToolResult(
+                    content = Content("你被禁止访问话题ID ${parm.topicId}，无法进行点赞操作。"),
+                )
+            }
             if (parm.action !in mainConfig.likes.keys)
             {
                 return@registerTool AiToolInfo.ToolResult(

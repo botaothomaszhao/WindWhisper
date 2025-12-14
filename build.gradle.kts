@@ -23,6 +23,18 @@ repositories {
 dependencies {
     implementation(kotlin("reflect")) // kotlin 反射库
 
+    // ktor server
+    implementation("io.ktor:ktor-server-core")
+    implementation("io.ktor:ktor-server-core-jvm") // core
+    implementation("io.ktor:ktor-server-netty-jvm") // netty
+    implementation("io.ktor:ktor-server-content-negotiation") // request/response时反序列化
+    implementation("io.ktor:ktor-server-status-pages") // 错误页面(异常处理)
+    implementation("io.ktor:ktor-server-auto-head-response-jvm") // 自动响应HEAD请求
+    implementation("io.ktor:ktor-server-double-receive-jvm") // 重复接收
+    implementation("io.ktor:ktor-server-call-logging-jvm") // 日志
+    implementation("io.ktor:ktor-server-sse") // Server-Sent Events (SSE) 支持
+    implementation("io.ktor:ktor-server-config-yaml-jvm") // yaml on read application.yaml
+
     // ktor client
     implementation("io.ktor:ktor-client-core-jvm") // core
     implementation("io.ktor:ktor-client-cio")
@@ -61,5 +73,13 @@ ktor {
     fatJar {
         allowZip64 = true
         archiveFileName = "WindWhisper.jar"
+    }
+}
+
+tasks.withType<ProcessResources> {
+    filesMatching("**/application.yaml") {
+        expand(mapOf("version" to version)) {
+            escapeBackslash = true
+        }
     }
 }
