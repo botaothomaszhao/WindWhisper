@@ -1,7 +1,7 @@
 package moe.tachyon.windwhisper.utils
 
-import io.ktor.server.application.ApplicationStopPreparing
-import io.ktor.utils.io.InternalAPI
+import io.ktor.server.application.*
+import io.ktor.utils.io.*
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
 import moe.tachyon.windwhisper.console.AnsiStyle.Companion.RESET
@@ -11,33 +11,29 @@ import moe.tachyon.windwhisper.logger.WindWhisperLogger
 import moe.tachyon.windwhisper.mainJob
 import moe.tachyon.windwhisper.server
 import java.io.File
+import kotlin.concurrent.atomics.AtomicBoolean
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.system.exitProcess
 
 @Suppress("unused")
+@OptIn(ExperimentalAtomicApi::class)
 object Power
 {
     @JvmField
     val logger = WindWhisperLogger.getLogger()
-    private var isShutdown: Int? = null
+    private var isShutdown = AtomicBoolean(false)
+    private val alreadyShutdown = AtomicBoolean(false)
 
     @JvmStatic
     fun shutdown(code: Int, cause: String = "unknown"): Nothing
     {
-        synchronized(Power)
+        if (!isShutdown.compareAndSet(expectedValue = false, newValue = true))
         {
-            if (isShutdown != null) exitProcess(isShutdown!!)
-            isShutdown = code
+            while (!alreadyShutdown.load())
+                Thread.sleep(1)
+            exitProcess(code)
         }
         logger.warning("${PURPLE}Server is shutting down: ${CYAN}$cause${RESET}")
-        val server = server
-        if (server != null) logger.warning("Failed to stop Ktor: ")
-        {
-            server.monitor.raise(ApplicationStopPreparing, server.environment)
-            server.engine.stop()
-            @OptIn(InternalAPI::class)
-            runBlocking { server.disposeAndJoin() }
-            logger.info("Ktor is stopped.")
-        }
         val mainJob = mainJob
         if (mainJob != null)
         {
@@ -50,7 +46,17 @@ object Power
                 logger.info("MainJob is stopped.")
             }
         }
+        val server = server
+        if (server != null) logger.warning("Failed to stop Ktor: ")
+        {
+            server.monitor.raise(ApplicationStopPreparing, server.environment)
+            server.engine.stop()
+            @OptIn(InternalAPI::class)
+            runBlocking { server.disposeAndJoin() }
+            logger.info("Ktor is stopped.")
+        }
         startShutdownHook(code)
+        alreadyShutdown.store(true)
         exitProcess(code)
     }
 

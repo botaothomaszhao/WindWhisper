@@ -13,26 +13,24 @@ import moe.tachyon.windwhisper.mainConfig
 private val notificationLogger = WindWhisperLogger.getLogger()
 
 @Serializable
-data class NotificationUnreadPost(
-    val topicId: Int,
+data class UnreadNotification(
+    val topicId: Int?,
     val notificationId: Long,
 )
 
-suspend fun LoginData.getUnreadPosts(): List<NotificationUnreadPost> = notificationLogger.warning("Failed to get unread posts")
+suspend fun LoginData.getUnreadNotifications(): List<UnreadNotification> = notificationLogger.warning("Failed to get unread posts")
 {
     val res = get("${mainConfig.url}/notifications?limit=50&recent=false&bump_last_seen_reviewable=true")
     if (!res.status.isSuccess())
         error("Failed to get unread posts: ${res.status}\n${res.bodyAsText()}")
-    return res.body<JsonObject>()["notifications"]!!
-        .jsonArray.mapNotNull()
-        { body ->
-            if (body !is JsonObject) return@mapNotNull null
-            if ((body["read"] as? JsonPrimitive)?.booleanOrNull == true ) return@mapNotNull null
-            val topicId = (body["topic_id"] as? JsonPrimitive)?.intOrNull
-            val notificationId = (body["id"] as? JsonPrimitive)?.longOrNull
-            if (topicId == null || notificationId == null) return@mapNotNull null
-            NotificationUnreadPost(topicId, notificationId)
-        }
+    return res.body<JsonObject>()["notifications"]!!.jsonArray.mapNotNull()
+    { body ->
+        if (body !is JsonObject) return@mapNotNull null
+        if ((body["read"] as? JsonPrimitive)?.booleanOrNull == true) return@mapNotNull null
+        val topicId = (body["topic_id"] as? JsonPrimitive)?.intOrNull
+        val notificationId = (body["id"] as? JsonPrimitive)?.longOrNull ?: return@mapNotNull null
+        UnreadNotification(topicId, notificationId)
+    }
 }.getOrNull() ?: emptyList()
 
 suspend fun LoginData.markAsRead(notificationId: Long): Boolean = notificationLogger.warning("Failed to mark notification $notificationId as read")

@@ -21,4 +21,4 @@ class AiResponseFormatException(
             response
         ), msg, cause)
 }
-class UnknownAiResponseException(cause: Throwable? = null): AiResponseException("未知的AI响应 ${cause?.message ?: ""}", cause)
+class UnknownAiResponseException(cause: Throwable? = null, message: String? = null): AiResponseException("未知的AI响应 ${message ?: cause?.message ?: ""}", cause)

@@ -542,6 +542,7 @@ private suspend fun sendRequest(
     var curMsg = ChatMessage(Role.ASSISTANT, "")
     val responses = mutableListOf<StreamAiResponse>()
     val loopId = Uuid.random().toHexString()
+    var done = false
 
     val r = runCatching()
     {
@@ -558,7 +559,10 @@ private suspend fun sendRequest(
             val buffer = StringBuilder()
             incoming
                 .mapNotNull { it.data }
-                .filterNot { it == "[DONE]" }
+                .filterNot {
+                    done = done || it.trim() == "[DONE]"
+                    done
+                }
                 .mapNotNull()
                 {
                     runCatching()
@@ -724,7 +728,12 @@ private suspend fun sendRequest(
         it
     }
 
-    return RequestResult(waitingTools.values.mapIndexed { i, it -> "call-$loopId-$i" to it }.toMap(), curMsg, usage0, r.exceptionOrNull())
+    return RequestResult(
+        waitingTools.values.mapIndexed { i, it -> "call-$loopId-$i" to it }.toMap(),
+        curMsg,
+        usage = usage0,
+        r.exceptionOrNull() ?: if (done) null else UnknownAiResponseException(message = "AI请求未能正确完成，可能由于网络问题导致响应中断")
+    )
 }
 
 private suspend fun parseToolCalls(

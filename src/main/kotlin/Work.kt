@@ -15,7 +15,7 @@ import moe.tachyon.windwhisper.config.aiConfig
 import moe.tachyon.windwhisper.console.AnsiStyle
 import moe.tachyon.windwhisper.console.SimpleAnsiColor
 import moe.tachyon.windwhisper.forum.LoginData
-import moe.tachyon.windwhisper.forum.getUnreadPosts
+import moe.tachyon.windwhisper.forum.getUnreadNotifications
 import moe.tachyon.windwhisper.forum.markAsRead
 import moe.tachyon.windwhisper.logger.WindWhisperLogger
 import java.io.File
@@ -54,8 +54,8 @@ var blackList: Set<Int>
 private val logger = WindWhisperLogger.getLogger()
 private suspend fun work(user: LoginData, prompt: String)
 {
-    val posts = user.getUnreadPosts().asReversed()
-    val topics = posts.map { it.topicId }.distinct().filter { it !in blackList }
+    val posts = user.getUnreadNotifications().asReversed()
+    val topics = posts.mapNotNull { it.topicId }.distinct().filter { it !in blackList }
     if (posts.isNotEmpty()) logger.info("Starting to process ${posts.size} unread notifications for topics $topics")
 
     for (it in posts) logger.severe("Failed to read notification ${it.notificationId}")

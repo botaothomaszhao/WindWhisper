@@ -96,9 +96,9 @@ private fun parseCommandLineArgs(args: Array<String>): Pair<Array<String>, File>
 }
 
 @OptIn(DelicateCoroutinesApi::class)
-suspend fun main(args: Array<String>) = withContext(Dispatchers.Default)
+fun main(args: Array<String>) = runBlocking()
 {
-    val (_, configFile) = runCatching { parseCommandLineArgs(args) }.getOrElse { return@withContext }
+    val (_, configFile) = runCatching { parseCommandLineArgs(args) }.getOrElse { return@runBlocking }
     ConfigLoader.init()
     Power.init()
     Console.startConsoleCommandHandler()
@@ -114,7 +114,7 @@ suspend fun main(args: Array<String>) = withContext(Dispatchers.Default)
         )
         configFile.writeText(showJson.encodeToString(MainConfig.serializer(), default))
         println("配置文件不存在, 已生成默认配置文件于 ${configFile.absolutePath}, 请修改后重新运行")
-        return@withContext
+        return@runBlocking
     }
     val promptFile = File(workDir, "prompt.txt")
     if (!promptFile.exists())
@@ -150,6 +150,9 @@ suspend fun main(args: Array<String>) = withContext(Dispatchers.Default)
     }
     server?.start(wait = false)
     mainJob!!.join()
+}.also()
+{
+    Power.shutdown(0, "Main function exited")
 }
 
 @Suppress("unused")
@@ -221,6 +224,7 @@ fun Application.init()
                             event = "log_message",
                             id = System.currentTimeMillis().toString(),
                         )
+                        delay(3L)
                     }
                 }
                 return@handle call.respond(HttpStatusCode.OK, sse)
